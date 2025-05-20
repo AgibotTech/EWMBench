@@ -21,7 +21,7 @@ from .semantics import compute_semantics
 import csv
 import re
 from collections import defaultdict
-import pdb
+
 
 
 class EmbodiedWorldModelBenchmark(object):
@@ -89,19 +89,23 @@ class EmbodiedWorldModelBenchmark(object):
 
 
     def merge_all_metrics_to_csv(self, data_name, data, save_path="final_results.csv"):
+
         rows = []
         metrics = defaultdict(list)
         all_fields = set(["task_id", "episode_id", "trial_id"])
         scene_dict = {}
         logic_dict = {}
         diversity_data = data.get("diversity", {})
+        all_triplets = set()
 
         if "scene_consistency" in data:
             for entry in data["scene_consistency"][1]:
-                match = re.search(rf'{data_name}_dataset_(\d+)_(\d+)_(\d+)/video', entry["video_path"])
+                match = re.search(r'/(\d+)/(\d+)/(\d+)/video$', entry["video_path"])
                 if match:
                     task_id, episode_id, trial_id = match.groups()
                     scene_dict[(task_id, episode_id, trial_id)] = entry["video_results"]
+                    all_triplets.add((task_id, episode_id, trial_id))
+
 
         if "logics" in data:
             for gid, val in data["logics"].items():
@@ -109,8 +113,15 @@ class EmbodiedWorldModelBenchmark(object):
                 if match:
                     task_id, episode_id, trial_id = match.groups()
                     logic_dict[(task_id, episode_id, trial_id)] = val
+                    all_triplets.add((task_id, episode_id, trial_id))
 
-        all_triplets = set()
+        
+        if "diversity" in data:
+            for task_id, episodes in data["diversity"].items():
+                for episode_id in episodes:
+                    all_triplets.add((str(task_id), str(episode_id), "1"))
+
+        
         for dim in ["semantics", "trajectory_consistency"]:
             if dim not in data:
                 continue
@@ -118,6 +129,7 @@ class EmbodiedWorldModelBenchmark(object):
                 for episode_id, trials in epis.items():
                     for trial_id in trials.keys():
                         all_triplets.add((task_id, episode_id, trial_id))
+
 
         for task_id, episode_id, trial_id in sorted(all_triplets):
             row = {
@@ -148,6 +160,7 @@ class EmbodiedWorldModelBenchmark(object):
                         except:
                             pass
 
+
             sc = scene_dict.get((task_id, episode_id, trial_id), "")
             if sc != "":
                 row["scene_consistency"] = sc
@@ -162,21 +175,33 @@ class EmbodiedWorldModelBenchmark(object):
                     metrics["logic_constraints"].append(int(logic))
                 except:
                     pass
+            
 
             str_task_id = str(task_id)
             str_episode_id = str(episode_id)
-            if trial_id == "1":
+            # if trial_id == "1":
+            #     div_val = diversity_data.get(str_task_id, {}).get(str_episode_id, "-")
+            #     row["diversity"] = div_val
+            #     all_fields.add("diversity")
+            #     if div_val != "-":
+            #         metrics["diversity"].append(div_val)
+            # else:
+            #     row["diversity"] = "-"
+            #     all_fields.add("diversity")
+
+            if trial_id == "1" and "diversity" in data:
                 div_val = diversity_data.get(str_task_id, {}).get(str_episode_id, "-")
                 row["diversity"] = div_val
                 all_fields.add("diversity")
                 if div_val != "-":
                     metrics["diversity"].append(div_val)
-            else:
+            elif "diversity" in data:
                 row["diversity"] = "-"
                 all_fields.add("diversity")
 
-            rows.append(row)
 
+            rows.append(row)
+        
         field_list = []
         for f in ["task_id", "episode_id", "trial_id"] + sorted(all_fields - {"task_id", "episode_id", "trial_id"}):
             if any(f in r and r[f] != "" for r in rows):
@@ -214,6 +239,7 @@ class EmbodiedWorldModelBenchmark(object):
 
         cur_full_info_path = self.build_full_info_json(data_base, data_name, dimension_list, **kwargs)
 
+        json_path = os.path.join(self.output_path, f"{data_name}_results.json")
 
         for dimension in dimension_list:
             print0(f"Evaluating: {dimension}")
@@ -274,6 +300,11 @@ class EmbodiedWorldModelBenchmark(object):
                 raise ValueError(f"[Error] Unsupported evaluation dimension: {dimension}")
 
             results_dict[dimension] = results
+        
+
+        results_json = os.path.join(self.output_path,f'{data_name}_results.json')    
+        with open(results_json,'w' ) as f:
+            json.dump(results_dict, f, indent=2)
 
         csv_save_path = os.path.join(self.output_path ,"ewmbm_final_table.csv")
         self.merge_all_metrics_to_csv(data_name, results_dict, csv_save_path)
