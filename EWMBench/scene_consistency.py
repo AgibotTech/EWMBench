@@ -25,6 +25,11 @@ from .distributed import (
 )
 from transformers import AutoModel, AutoTokenizer, CLIPImageProcessor
 
+from omegaconf import OmegaConf
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "submodel", "dinov2"))
+from dinov2.models import build_model_from_cfg
+
 
 # logging.basicConfig(level = logging.INFO,format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 # logger = logging.getLogger(__name__)
@@ -88,17 +93,24 @@ def compute_scene_consistency(json_dir, submodules_list, **kwargs):
     if repo_or_dir is None or checkpoint_path is None:
         raise ValueError("Both model code path (`repo_or_dir`) and checkpoint path must be provided in submodules_list")
 
-    dino_model = torch.hub.load(
-        repo_or_dir=repo_or_dir,
-        model='dinov2_vitb14',
-        pretrained=False,
-        source='local'
-    ).to(device)
+
+    cfg = OmegaConf.load(config_path)
+    dino_model, _ = build_model_from_cfg(cfg, only_teacher=True)
+    dino_model = dino_model.to(device)
 
     print(f"Loading model weights from: {checkpoint_path}")
-    state_dict = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    dino_model.load_state_dict(state_dict, strict=False)
+    ori_state_dict = dino_model.state_dict()
+    state_dict = torch.load(checkpoint_path)
+    state_dict_toload = dict()
+    for k, v in state_dict.items():
+        if k.startswith("teacher"):
+            k_toload = k.replace("teacher.", "")
+            k_toload = k_toload.replace("backbone.", "")
+            if k_toload in ori_state_dict.keys():
+                state_dict_toload.update({k_toload: v})
+    print(dino_model.load_state_dict(state_dict_toload, strict=False))
     print("Initialize DINO success")
+
 
     video_list = load_dimension_info(json_dir, dimension='scene_consistency')
     video_list = distribute_list_to_rank(video_list)
