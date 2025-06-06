@@ -88,6 +88,8 @@ def compute_scene_consistency(json_dir, submodules_list, **kwargs):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     repo_or_dir = './submodel/dinov2'
+    config_path = './dino_config.yaml'
+    
     checkpoint_path = submodules_list['model']
 
     if repo_or_dir is None or checkpoint_path is None:
