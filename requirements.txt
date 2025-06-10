@@ -13,7 +13,7 @@ opencv_python_headless==4.11.0.86
 PyYAML==6.0.2
 setuptools==75.6.0
 torch==2.4.0
-torchmetrics==1.4.2
+torchmetrics==1.7.1
 torchvision==0.19.0
 tqdm==4.65.2
 transformers==4.51.3
