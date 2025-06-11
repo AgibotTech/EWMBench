@@ -18,6 +18,8 @@ from .diversity import compute_diversity
 from .caption import caption_reference
 from .semantics import compute_semantics
 
+from .basic_metrics import compute_basic_metrics
+
 import csv
 import re
 from collections import defaultdict
@@ -100,20 +102,35 @@ class EmbodiedWorldModelBenchmark(object):
 
         if "scene_consistency" in data:
             for entry in data["scene_consistency"][1]:
-                match = re.search(r'/(\d+)/(\d+)/(\d+)/video$', entry["video_path"])
-                if match:
-                    task_id, episode_id, trial_id = match.groups()
+                # match = re.search(r'/(\d+)/(\d+)/(\d+)/video$', entry["video_path"])
+                # if match:
+                try:
+                    task_id, episode_id, trial_id = entry["video_path"].split("/")[-4], entry["video_path"].split("/")[-3], entry["video_path"].split("/")[-2]
+                    # task_id, episode_id, trial_id = match.groups()
                     scene_dict[(task_id, episode_id, trial_id)] = entry["video_results"]
                     all_triplets.add((task_id, episode_id, trial_id))
+                except:
+                    pass
 
 
         if "logics" in data:
             for gid, val in data["logics"].items():
-                match = re.search(rf'{data_name}_dataset_(\d+)_(\d+)_(\d+)', gid)
-                if match:
-                    task_id, episode_id, trial_id = match.groups()
-                    logic_dict[(task_id, episode_id, trial_id)] = val
-                    all_triplets.add((task_id, episode_id, trial_id))
+                # match = re.search(rf'{data_name}_dataset_(\d+)_(\d+)_(\d+)', gid)
+                # if match:
+                #     task_id, episode_id, trial_id = match.groups()
+                #     logic_dict[(task_id, episode_id, trial_id)] = val
+                #     all_triplets.add((task_id, episode_id, trial_id))
+                try:
+                    gid_contents = gid.split("_dataset_")[-1].split("_")
+                    task_id = gid_contents[0]
+                    trail_id = gid_contents[-1]
+                    if len(gid_contents)==3:
+                        episode_id = gid_contents[1]
+                    else:
+                        episode_id = "_".join(gid_contents[1:-1])
+
+                except:
+                    pass
 
         
         if "diversity" in data:
@@ -122,7 +139,7 @@ class EmbodiedWorldModelBenchmark(object):
                     all_triplets.add((str(task_id), str(episode_id), "1"))
 
         
-        for dim in ["semantics", "trajectory_consistency"]:
+        for dim in ["semantics", "trajectory_consistency", "psnr", "ssim"]:
             if dim not in data:
                 continue
             for task_id, epis in data[dim].items():
@@ -131,10 +148,12 @@ class EmbodiedWorldModelBenchmark(object):
                         all_triplets.add((task_id, episode_id, trial_id))
 
 
+
         for task_id, episode_id, trial_id in sorted(all_triplets):
+            
             row = {
                 "task_id": int(task_id),
-                "episode_id": int(episode_id),
+                "episode_id": episode_id,
                 "trial_id": int(trial_id)
             }
 
@@ -148,6 +167,19 @@ class EmbodiedWorldModelBenchmark(object):
                     row["CLIPScore"] = sem["CLIPScore"]
                     all_fields.add("CLIPScore")
                     metrics["CLIPScore"].append(sem["CLIPScore"])
+
+            if "psnr" in data:
+                res = data["psnr"].get(task_id, {}).get(episode_id, {}).get(trial_id, {})
+                row["psnr"] = res
+                all_fields.add("psnr")
+                metrics["psnr"].append(res)
+
+            if "ssim" in data:
+                res = data["ssim"].get(task_id, {}).get(episode_id, {}).get(trial_id, {})
+                row["ssim"] = res
+                all_fields.add("ssim")
+                metrics["ssim"].append(res)
+
 
             if "trajectory_consistency" in data:
                 traj = data["trajectory_consistency"].get(task_id, {}).get(episode_id, {}).get(trial_id, {})
@@ -229,84 +261,124 @@ class EmbodiedWorldModelBenchmark(object):
         print(f"✅ Cleaned metrics written to {save_path}")
 
 
-    def evaluate(self, data_base, data_name, dimension_list=None, local=False, gt_path=None, **kwargs):
-        results_dict = {}
-
-        if dimension_list is None:
-            dimension_list = self.build_full_dimension_list()
-
-        submodules_dict = init_submodules(dimension_list, local=local, **kwargs)
-
-        cur_full_info_path = self.build_full_info_json(data_base, data_name, dimension_list, **kwargs)
+    def evaluate(self, data_base, data_name, dimension_list=None, local=False, gt_path=None, overwrite=False, **kwargs):
 
         json_path = os.path.join(self.output_path, f"{data_name}_results.json")
 
-        for dimension in dimension_list:
-            print0(f"Evaluating: {dimension}")
+        if (not os.path.exists(json_path)) or overwrite:
+
+            results_dict = {}
             
-            if dimension == 'trajectory_consistency':
-                results = compute_trajectory_consistency(
-                    gt_path=gt_path, data_base=data_base
-                )
+            if dimension_list is None:
+                dimension_list = self.build_full_dimension_list()
 
-            elif dimension == 'semantics':  
-                submodules_list = submodules_dict[dimension] 
-                caption_model = submodules_list['caption_model'] 
-                semantics_model = submodules_list['clip_model'] 
-                caption = caption_reference(
-                                    model_name=data_name,
-                                    model_path = caption_model,
-                                    video_folder_root = cur_full_info_path,
-                                    save_path = self.output_path,
-                                    **kwargs
-                                    )
-                caption_json = os.path.join(self.output_path, f"{data_name}_caption_responses.json")
-                with open(caption_json, 'r') as f:
-                    data = json.load(f)
+            if "psnr" in dimension_list and "ssim" in dimension_list:
+                dimension_list.pop(dimension_list.index("psnr"))
+                dimension_list.pop(dimension_list.index("ssim"))
+                dimension_list.append("psnr_ssim")
 
-                result = {}
-                for sample_id, info in data.items():
-                    if "Overall_Constraints" in info:
-                        result[sample_id] = info["Overall_Constraints"]
-                    else:
-                        print(f"Warning: No 'Overall_Constraints' found in {sample_id}")
-                results_dict['logics'] = result
+            print(dimension_list)
 
-                gt_caption_json = os.path.join(self.output_path, f"gt_caption_responses.json")
-                if not os.path.isfile(gt_caption_json):
-                    gt_full_info_path = self.build_full_gt_info_json(gt_path, 'gt', **kwargs)
-                    gt_caption = caption_reference(
-                                        model_name='gt',
+            submodules_dict = init_submodules(dimension_list, local=local, **kwargs)
+
+            cur_full_info_path = self.build_full_info_json(data_base, data_name, dimension_list, **kwargs)
+
+            for dimension in dimension_list:
+                
+                print0(f"Evaluating: {dimension}")
+                
+                if dimension == 'trajectory_consistency':
+                    results = compute_trajectory_consistency(
+                        gt_path=gt_path, data_base=data_base
+                    )
+
+                elif dimension == 'semantics':  
+                    submodules_list = submodules_dict[dimension] 
+                    caption_model = submodules_list['caption_model'] 
+                    semantics_model = submodules_list['clip_model'] 
+                    caption = caption_reference(
+                                        model_name=data_name,
                                         model_path = caption_model,
-                                        video_folder_root = gt_full_info_path,
+                                        video_folder_root = cur_full_info_path,
                                         save_path = self.output_path,
                                         **kwargs
-                                        )                                                                     
+                                        )
+                    caption_json = os.path.join(self.output_path, f"{data_name}_caption_responses.json")
+                    with open(caption_json, 'r') as f:
+                        data = json.load(f)
+
+                    result = {}
+                    for sample_id, info in data.items():
+                        if "Overall_Constraints" in info:
+                            result[sample_id] = info["Overall_Constraints"]
+                        else:
+                            print(f"Warning: No 'Overall_Constraints' found in {sample_id}")
+                    results_dict['logics'] = result
+
+                    gt_caption_json = os.path.join(self.output_path, f"gt_caption_responses.json")
+                    if not os.path.isfile(gt_caption_json):
+                        gt_full_info_path = self.build_full_gt_info_json(gt_path, 'gt', **kwargs)
+                        gt_caption = caption_reference(
+                                            model_name='gt',
+                                            model_path = caption_model,
+                                            video_folder_root = gt_full_info_path,
+                                            save_path = self.output_path,
+                                            **kwargs
+                                            )                                                                     
+                    
+                    
+                    results = compute_semantics(caption_json,gt_caption_json,semantics_model)
                 
+                elif dimension == 'scene_consistency':
+
+                    submodules_list = submodules_dict[dimension]
+                    results = compute_scene_consistency(cur_full_info_path, submodules_list, **kwargs)
                 
-                results = compute_semantics(caption_json,gt_caption_json,semantics_model)
-            elif dimension == 'scene_consistency':
+                elif dimension == 'diversity':
 
-                submodules_list = submodules_dict[dimension]
-                results = compute_scene_consistency(cur_full_info_path, submodules_list, **kwargs)
-            
-            elif dimension == 'diversity':
+                    submodules_list = submodules_dict[dimension]
 
-                submodules_list = submodules_dict[dimension]
+                    results = compute_diversity(cur_full_info_path, submodules_list, **kwargs)
 
-                results = compute_diversity(cur_full_info_path, submodules_list, **kwargs)
+                elif dimension == 'psnr_ssim':
+                    
+                    results = compute_basic_metrics(
+                        gt_path=gt_path, pd_path=data_base, metric_names=["psnr", "ssim"]
+                    )
                 
-            else:
-                raise ValueError(f"[Error] Unsupported evaluation dimension: {dimension}")
+                elif dimension == 'psnr':
+                    
+                    results = compute_basic_metrics(
+                        gt_path=gt_path, pd_path=data_base, metric_names=["psnr"]
+                    )
 
-            results_dict[dimension] = results
+                elif dimension == 'ssim':
         
+                    results = compute_basic_metrics(
+                        gt_path=gt_path, pd_path=data_base, metric_names=["ssim"]
+                    )
+                    
+                else:
+                    raise ValueError(f"[Error] Unsupported evaluation dimension: {dimension}")
 
-        results_json = os.path.join(self.output_path,f'{data_name}_results.json')    
-        with open(results_json,'w' ) as f:
-            json.dump(results_dict, f, indent=2)
+                if dimension == "psnr_ssim":
+                    results_dict["psnr"] = results["psnr"]
+                    results_dict["ssim"] = results["ssim"]
+                else:
+                    results_dict[dimension] = results
+            
+
+            results_json = os.path.join(self.output_path,f'{data_name}_results.json')    
+            with open(results_json, "w") as f:
+                json.dump(results_dict, f, indent=2)
+
+        else:
+
+            with open(json_path, "r") as f:
+                results_dict = json.load(f)
 
         csv_save_path = os.path.join(self.output_path ,"ewmbm_final_table.csv")
+
         self.merge_all_metrics_to_csv(data_name, results_dict, csv_save_path)
 
 

@@ -25,6 +25,10 @@ def parse_args():
         help="Path to config JSON that defines per-dimension settings"
         )
 
+    parser.add_argument(
+        "--overwrite",
+        action="store_true"
+    )
 
     args = parser.parse_args()
     return args
@@ -50,7 +54,8 @@ def main():
     save_path = config['save_path']
     data_base = config['data']['val_base']
     gt_path = config['data']['gt_path']
-    data_name = config['model_name']
+    # data_name = config['model_name']
+    data_name = os.path.basename(data_base).replace("_dataset", "")
 
 
     kwargs = {}
@@ -67,6 +72,9 @@ def main():
             key_bleus = f"{dim}_bleus_model_ckpt"
 
             print(f"{dim}: caption = {kwargs[key_caption]}, CLIP = {kwargs[key_clip]}, BLEUs = {kwargs[key_bleus]}")
+        elif dim in ['psnr', 'ssim']:
+            pass
+            
         else:           
             kwargs[f"{dim}_model_ckpt"] = config.get('ckpt',{}).get(dim, None)
 
@@ -82,6 +90,7 @@ def main():
         dimension_list = args.dimension,
         local=True,
         gt_path=gt_path,
+        overwrite=args.overwrite,
         **kwargs
     )
     print0('done')

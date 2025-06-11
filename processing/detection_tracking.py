@@ -9,8 +9,9 @@ import yaml
 
 
 def process_video_with_tracking(input_path, output_path, gid=None,
-                                 model_path='',data_type='val'):
-    print(f"Processing input: {input_path}")
+                                 model_path='', data_type='val', saving_fps=5):
+    
+    # print(f"Processing input: {input_path}")
 
     model = YOLO(model_path).to('cuda:0')
 
@@ -19,14 +20,14 @@ def process_video_with_tracking(input_path, output_path, gid=None,
         output_traj_path = os.path.join(output_path, gid, "traj")
     else:
         output_video_path = os.path.join(output_path, "gripper_detection")
-        output_traj_path = os.path.join(output_path, "traj")        
+        output_traj_path = os.path.join(output_path, "traj")
 
     os.makedirs(output_video_path, exist_ok=True)
     os.makedirs(output_traj_path, exist_ok=True)
 
     output_video_file = os.path.join(output_video_path, "video.mp4")
     output_container = av.open(output_video_file, mode='w', format='mp4')
-    output_stream = output_container.add_stream('h264', rate=30)
+    output_stream = output_container.add_stream('h264', rate=saving_fps)
     output_stream.width = 640
     output_stream.height = 480
     output_stream.pix_fmt = 'yuv420p'
@@ -111,7 +112,8 @@ def process_video_with_tracking(input_path, output_path, gid=None,
         output_frame = av.VideoFrame.from_ndarray(annotated_frame, format='rgb24')
         for packet in output_stream.encode(output_frame):
             output_container.mux(packet)
-
+    for packet in output_stream.encode():
+        output_container.mux(packet)
     output_container.close()
 
     np.save(os.path.join(output_traj_path, 'traj.npy'), np.array(trajectory_data))
@@ -129,7 +131,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', type=str, required=True, help='Path to config.yaml')
-
+    parser.add_argument('--detect_gt', action='store_false')
     args = parser.parse_args()
     config = load_config(args.config_path)
 
@@ -147,9 +149,9 @@ if __name__ == "__main__":
             
             gt_episode_path = os.path.join(gt_path, task, episode)
             gt_video = os.path.join(gt_episode_path, 'video')
-            user_input = input("Do you want to detect the ground truth trajectory? [y/N]: ").strip().lower()
-            gt_detect_opt = user_input in ['y', 'yes', 'true', '1']
-            if gt_detect_opt:
+            # user_input = input("Do you want to detect the ground truth trajectory? [y/N]: ").strip().lower()
+            # gt_detect_opt = user_input in ['y', 'yes', 'true', '1']
+            if args.detect_gt:
                 process_video_with_tracking(
                     input_path=gt_video,
                     output_path=gt_episode_path,

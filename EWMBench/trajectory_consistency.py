@@ -10,7 +10,7 @@ import argparse
 import json
 import math
 from scipy.stats import norm
-
+from tqdm import tqdm
 
 def one_traj_interpo_fill(data):
     invaild_traj = False
@@ -99,7 +99,7 @@ def hausdorff_distance(traj1, traj2):
     d2 = directed_hausdorff(traj2, traj1)[0]
     return max(d1, d2)
 
-def HAUSDORFF(traj_pred, traj_gt, invaild_pred_trajs, invaild_gt_trajs):
+def HAUSDORFF(traj_pred, traj_gt, invaild_pred_trajs, invalid_gt_trajs):
     """
     traj_pred: np arr N,k,2
 
@@ -109,9 +109,14 @@ def HAUSDORFF(traj_pred, traj_gt, invaild_pred_trajs, invaild_gt_trajs):
 
     gt_max_distance_list = []
     for i in range(n_traj):
-        assert not invaild_gt_trajs[i], "Invalid gt trajectory encountered at index {}".format(i)
+        # assert not invalid_gt_trajs[i], "Invalid gt trajectory encountered at index {}".format(i)
+        if invalid_gt_trajs[i]:
+            print("Invalid gt trajectory encountered at index {}".format(i))
+            continue
         gt_max_distance = farthest_distance(traj_gt[:, i])
         gt_max_distance_list.append(gt_max_distance)
+    assert len(gt_max_distance_list)>=1, "All GT trajectory invalid!"
+
     max_distance_index, max_distance_traj = max(enumerate(gt_max_distance_list), key=lambda x: x[1])
     
     if invaild_pred_trajs[max_distance_index]:
@@ -126,7 +131,7 @@ def HAUSDORFF(traj_pred, traj_gt, invaild_pred_trajs, invaild_gt_trajs):
 
 
 
-def DYNAMICS(traj_pred,traj_gt,invaild_pred_trajs,invaild_gt_trajs,max_distance_index):
+def DYNAMICS(traj_pred,traj_gt,invaild_pred_trajs,invalid_gt_trajs,max_distance_index):
     """
     traj_pred: np arr N,k,2
 
@@ -222,7 +227,7 @@ def dtw_distance(traj1, traj2):
     distance, dpath = fastdtw(np.array(traj1), np.array(traj2), dist=euclidean)
     return distance,dpath
 
-def NDTW(traj_pred,traj_gt,invaild_pred_trajs,invaild_gt_trajs,max_distance_index):
+def NDTW(traj_pred,traj_gt,invaild_pred_trajs,invalid_gt_trajs,max_distance_index):
     """
     traj_pred: np arr N,k,2
 
@@ -250,12 +255,13 @@ def eval_traj(traj_pred_file, traj_gt_file):
     traj_pred = np.load(traj_pred_file).astype('float32')
     traj_gt = np.load(traj_gt_file).astype('float32')
     traj_pred, invaild_pred_trajs = traj_interpo_fill(traj_pred)
-    traj_gt, invaild_gt_trajs = traj_interpo_fill(traj_gt)
+    traj_gt, invalid_gt_trajs = traj_interpo_fill(traj_gt)
+    
+    # print(traj_gt_file, invaild_pred_trajs, invalid_gt_trajs)
 
-
-    hsd,max_distance_index= HAUSDORFF(traj_pred,traj_gt,invaild_pred_trajs,invaild_gt_trajs)
-    dyn = DYNAMICS(traj_pred,traj_gt,invaild_pred_trajs,invaild_gt_trajs,max_distance_index)
-    ndtw = NDTW(traj_pred,traj_gt,invaild_pred_trajs,invaild_gt_trajs,max_distance_index)
+    hsd,max_distance_index = HAUSDORFF(traj_pred,traj_gt,invaild_pred_trajs,invalid_gt_trajs)
+    dyn = DYNAMICS(traj_pred,traj_gt,invaild_pred_trajs,invalid_gt_trajs,max_distance_index)
+    ndtw = NDTW(traj_pred,traj_gt,invaild_pred_trajs,invalid_gt_trajs,max_distance_index)
 
     hsd_max = 24.979
     dyn_max = 22.519
@@ -319,7 +325,7 @@ def compute_trajectory_consistency(gt_path, data_base):
         task_path = os.path.join(data_base,task_id)
 
         res[task_id] = {}
-        for episode_id in sorted(os.listdir(task_path)):
+        for episode_id in tqdm(sorted(os.listdir(task_path))):
             if episode_id.endswith(('.png', '.json')): 
                 continue
             res[task_id][episode_id] = {}

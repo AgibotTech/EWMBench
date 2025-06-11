@@ -100,12 +100,11 @@ def caption_reference(
                         **kwargs
                         ):
 
-
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_path,
         torch_dtype=torch.bfloat16,
         # attn_implementation="flash_attention_2",
-        device_map="auto"
+        device_map="cuda:0",
     )
 
     processor = AutoProcessor.from_pretrained(model_path)
@@ -117,31 +116,36 @@ def caption_reference(
     json_file_name = f"{model_name}_caption_responses.json"
     json_file_name = os.path.join(save_path, json_file_name)
 
-    all_mp4_files = load_dimension_info(video_folder_root, dimension='semantics')
+    if not os.path.exists(json_file_name):
+
+        all_mp4_files = load_dimension_info(video_folder_root, dimension='semantics')
 
 
-    all_responses = {}
-    for mp4_file in tqdm(all_mp4_files):
+        all_responses = {}
+        for mp4_file in tqdm(all_mp4_files):
 
-        prompt = prepare_prompt(mp4_file)
-        try:
-            response = json_repair.loads(inference(model, processor, mp4_file, prompt))
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            response = "Error: " + str(e)
+            prompt = prepare_prompt(mp4_file)
+            try:
+                response = json_repair.loads(inference(model, processor, mp4_file, prompt))
+            except Exception as e:
+                print(f"Error: {str(e)}")
+                response = "Error: " + str(e)
 
-        parts = mp4_file.split('/')
-        model_dataset = f"{model_name}_dataset"
-        try:
-            start_index = parts.index(model_dataset)+1
-            video_index = parts.index('video')
-            selected_parts = parts[start_index:video_index]
-            mp4_file_name = "_".join([model_dataset] + selected_parts)
-        except ValueError:
-            mp4_file_name = "error_in_filename_construction"
+            parts = mp4_file.split('/')
+            model_dataset = f"{model_name}_dataset"
+            try:
+                start_index = parts.index(model_dataset)+1
+                video_index = parts.index('video')
+                selected_parts = parts[start_index:video_index]
+                mp4_file_name = "_".join([model_dataset] + selected_parts)
+            except ValueError:
+                mp4_file_name = "error_in_filename_construction"
 
-        all_responses[mp4_file_name] = response
-        
-    # save to json file
-    with open(json_file_name, 'w') as f:
-        json.dump(all_responses, f, indent=4)
+            all_responses[mp4_file_name] = response
+            
+        # save to json file
+        with open(json_file_name, 'w') as f:
+            json.dump(all_responses, f, indent=4)
+
+    else:
+        return

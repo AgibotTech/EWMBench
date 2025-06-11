@@ -88,8 +88,15 @@ def evaluate_run(semantics_model,eval_config, dt_json, gt_json):
     expanded_gt_idxs = [] 
     
     for gen_id, gen_string in zip(gen_idxs, gen_strings):
+        # task_id, eps_id, trail_num = gen_id.split("_dataset_")[-1].rsplit("_")
+        task_eps_trail = gen_id.split("_dataset_")[-1].split("_")
+        task_id = task_eps_trail[0]
+        trail_num = task_eps_trail[-1]
+        if len(task_eps_trail)==3:
+            eps_id = task_eps_trail[1]
+        else:
+            eps_id = "_".join(task_eps_trail[1:-1])
 
-        task_id, eps_id, trail_num = gen_id.split("_dataset_")[-1].rsplit("_")
         gt_idx = f"gt_dataset_{task_id}_{eps_id}"
         gt_string = gt_strings[gt_idxs.index(gt_idx)]
         expanded_gt_strings.append(gt_string)
@@ -100,7 +107,7 @@ def evaluate_run(semantics_model,eval_config, dt_json, gt_json):
     assert len(gen_strings) == len(gt_strings), "Number of generated and ground-truth strings do not match"
     print(f"the number of generated strings: {len(gen_strings)}")
     # Compute metric scores
-    scores = compute_metric_scores(semantics_model,metric_type, gen_strings, gt_strings, bleu_n_gram)
+    scores = compute_metric_scores(semantics_model, metric_type, gen_strings, gt_strings, bleu_n_gram)
     
     # Save scores to file
     scores_list = [np.around(score, decimals=6).tolist() for score in scores]
@@ -125,7 +132,7 @@ def evaluate_run(semantics_model,eval_config, dt_json, gt_json):
     return scores
 
 
-def evaluate_runs_single_config(eval_config, json_path, gt_json,semantics_model):
+def evaluate_runs_single_config(eval_config, json_path, gt_json, semantics_model):
 
 
     assert gt_json is not None, "Ground-truth JSON not found"
@@ -143,14 +150,14 @@ def evaluate_runs_single_config(eval_config, json_path, gt_json,semantics_model)
 
 
 
-def evaluate_runs_configs(eval_configs, json_path, gt_path,semantics_model):
+def evaluate_runs_configs(eval_configs, json_path, gt_path, semantics_model):
     eval_results = {}
     for eval_config in tqdm(eval_configs, desc="Eval different configs"):
         exp_name = eval_config["metric_type"]
         if "bleu_n_gram" in eval_config:
             exp_name += f"_ngram{eval_config['bleu_n_gram']}"
         print(f"Evaluating {exp_name}...")
-        scores_list = evaluate_runs_single_config(eval_config, json_path, gt_path,semantics_model)
+        scores_list = evaluate_runs_single_config(eval_config, json_path, gt_path, semantics_model)
         print(f"Scores: {scores_list}")
         eval_results[exp_name] = scores_list
     return eval_results
@@ -171,5 +178,5 @@ def compute_semantics(json_path, gt_path,semantics_model):
     
 
         
-    results = evaluate_runs_configs(eval_configs, json_path, gt_path,semantics_model)
+    results = evaluate_runs_configs(eval_configs, json_path, gt_path, semantics_model)
     return results_list

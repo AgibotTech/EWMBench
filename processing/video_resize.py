@@ -17,8 +17,11 @@ def resize_and_save_images(image_folder, target_size=(640, 480)):
         if img is None:
             print(f"Warning: Failed to read {img_path}")
             continue
-        img_resized = cv2.resize(img, target_size, interpolation=cv2.INTER_LINEAR)
-        cv2.imwrite(img_path, img_resized)
+        if img.shape[:2] != tuple(target_size[::-1]):
+            img_resized = cv2.resize(img, target_size, interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(img_path, img_resized)
+        else:
+            f"Keep: {img_path}"
 
 
 def process_video_or_images(input_base):
