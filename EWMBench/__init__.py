@@ -115,11 +115,6 @@ class EmbodiedWorldModelBenchmark(object):
 
         if "logics" in data:
             for gid, val in data["logics"].items():
-                # match = re.search(rf'{data_name}_dataset_(\d+)_(\d+)_(\d+)', gid)
-                # if match:
-                #     task_id, episode_id, trial_id = match.groups()
-                #     logic_dict[(task_id, episode_id, trial_id)] = val
-                #     all_triplets.add((task_id, episode_id, trial_id))
                 try:
                     gid_contents = gid.split("_dataset_")[-1].split("_")
                     task_id = gid_contents[0]
@@ -128,9 +123,11 @@ class EmbodiedWorldModelBenchmark(object):
                         episode_id = gid_contents[1]
                     else:
                         episode_id = "_".join(gid_contents[1:-1])
-
+                    logic_dict[(task_id, episode_id, trial_id)] = val
+                    all_triplets.add((task_id, episode_id, trial_id))
                 except:
                     pass
+
 
         
         if "diversity" in data:
